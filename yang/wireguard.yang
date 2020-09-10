@@ -1,0 +1,103 @@
+/*
+Yang model for configuring wireguard params
+
+To Do:
+1. IPV6 support for interface addresses (change pattern match)
+*/
+
+module wireguard {
+    namespace "http://wireguard";
+    prefix "wireguard";
+
+    /* Need the below for operational commands
+    import junos-extension {
+        prefix junos;
+    }
+    import junos-common-odl-extensions {
+        prefix junos-odl;
+    }*/
+
+    organization "Juniper Networks";
+    contact " 
+        Author: Aravind Prabhakar
+                <mailto: aprabh@juniper.net>";
+    description "
+        Yang model to configure wireguard parameters.This can be 
+        used in cMGD/cRPD containers.";
+
+    // Beginning of config statements 
+    container security {
+       list interface {
+           key name;
+           leaf name {
+               description "Interface name to configure wireguard on";
+               type string;
+           }
+           leaf type {
+               type enumeration {
+                   enum dynamic {
+                       value 1;
+                   }
+                   enum static {
+                       value 2;
+                   }
+               }
+           }
+           leaf url {
+               type string;
+               description "keyguard rest url";
+               must "../type ='dynamic'" {
+                   error-message "type should be dynamic";
+               }
+           }
+           leaf address {
+               description "CIDR address";
+               type string {
+                   pattern
+                   '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
+                   + '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])/([0-9]{2})|'
+                   + '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])' {
+                       error-message "Value should be of format w.x.y.z or w.x.y.z/subnet";
+                   }
+               }
+               must "../type='static'" {
+                   error-message "Type should be static";
+               } 
+           }
+           list peer {
+               key peer-name;
+               leaf peer-name {
+                   type string;
+                   description "peer name";
+               }
+               leaf public-key {
+                   type string;
+                   description "public key value";
+               }
+               leaf-list allowed-ips {
+                   type string {
+                       pattern 
+                       '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
+                       + '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])/([0-9]{2})|'
+                       + '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])' {
+                           error-message "Value should be of format w.x.y.z or w.x.y.z/subnet";
+                       }
+                   }
+               }
+               leaf endpoint {
+                   type string {
+                       pattern 
+                       '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
+                       + '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])/([0-9]{2})|'
+                       + '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])' {
+                           error-message "Value should be of format w.x.y.z or w.x.y.z/subnet";
+                       }
+                   }
+               }
+           }
+       }
+    }
+}
+
+
+    // Beginning of Operational RPC calls         

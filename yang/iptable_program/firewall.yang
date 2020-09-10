@@ -1,0 +1,823 @@
+/*
+#  YOU MUST ACCEPT THE TERMS OF THIS DISCLAIMER TO USE THIS SOFTWARE.
+#
+#  JUNIPER IS WILLING TO MAKE THE INCLUDED SCRIPTING SOFTWARE AVAILABLE TO YOU
+#  ONLY UPON THE CONDITION THAT YOU ACCEPT ALL OF THE TERMS CONTAINED IN THIS
+#  DISCLAIMER. PLEASE READ THE TERMS AND CONDITIONS OF THIS DISCLAIMER CAREFULLY.
+#
+#  THE SOFTWARE CONTAINED IN THIS FILE IS PROVIDED "AS IS".  JUNIPER MAKES NO
+#  WARRANTIES OF ANY KIND WHATSOEVER WITH RESPECT TO SOFTWARE. ALL EXPRESS OR
+#  IMPLIED CONDITIONS, REPRESENTATIVES AND WARRANTIES, INCLUDING ANY WARRANTY
+#  OF NON-INFRINGEMENT OR WARRANTY OF MERCHANTABILITY OR FITNESS FOR A
+#  PARTICULAR PURPOSE, ARE HEREBY DISCLAIMED AND EXCLUDED TO THE EXTENT
+#  ALLOWED BY APPLICABLE LAW.
+#
+#  IN NO EVENT WILL JUNIPER BE LIABLE FOR ANY LOST REVENUE, PROFIT OR DATA, OR
+#  FOR DIRECT, SPECIAL, INDIRECT, CONSEQUENTIAL, INCIDENTAL OR PUNITIVE DAMAGES
+#  HOWEVER CAUSED AND REGARDLESS OF THE THEORY OF LIABILITY ARISING OUT OF THE
+#  USE OF OR INABILITY TO USE THE SOFTWARE, EVEN IF JUNIPER HAS BEEN ADVISED OF
+#  THE POSSIBILITY OF SUCH DAMAGES.
+#
+#
+#  Author        : Aravind Prabhakar
+#  E-mail        : aprabh@juniper.net
+
+# Version: 1.2
+# Firewall.yang version: 1.2
+# 
+# set system commit xpath
+# set system commit constraints direct-access
+# set system commit notification configuration-diff-format xml
+# set system scripts language python 
+
+# Custom Yang model to support creation of Iptable chain rules.
+# This can be loaded on an independently running cMGD/cRPD with iptables installed.
+
+# Revision Date: 2020-01-03
+
+# V1.1:
+#   1. Added pattern for string data type
+#   2. Added must validations 
+#   3. Added support for TOS, LOG, Classify, DNAT, SNAT targets 
+
+# V1.2:
+#   1. Added Choice for action instead of container
+
+# Caveats:
+#   1. Custom chains are not supported yet
+#   2. Does not support deactivating config. whole config has to be deleted
+#   3. IPv6 isnt support. Ip6tables should be used.
+
+# To DO:
+#   1. support for creating custom chains --> use policy name as chain name
+#   2. RPC call for restoring IPtable rules (currently on each commit, there is a backup created.
+#   3. Match junos hierarchy (currently no terms post policy name for ordering)
+#   4. Add IPV6 support
+
+*/
+
+module firewall {
+	namespace "http://firewall";
+	prefix "firewall";
+	import junos-extension {
+		prefix junos;
+	}
+    import junos-common-odl-extensions {
+        prefix junos-odl;
+    }
+    organization "Juniper Networks";
+
+    contact "aprabh@juniper.net";
+
+    description
+        " YANG model to install iptable rules in cMGD/cRPD ";
+
+	revision "2020-01-03" {
+	    description "Version 1.1";
+	}
+
+    grouping group-match-conditions {
+        description " match conditions";
+		leaf sourceIp {
+            type string {
+                pattern
+                '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
+                +  '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])/([0-9]{2})|'
+                + '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])' {
+                        error-message "Value should be of format w.x.y.z or w.x.y.z/subnet";
+                    }
+            }
+            description "source Prefix";
+        }
+		leaf destIp {
+            type string {
+                pattern
+                '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
+                +  '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])/([0-9]{2})|'
+                + '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])' {
+                        error-message "Value should be of format w.x.y.z or w.x.y.z/subnet";
+                    }
+            }
+            description "destination prefix";
+        }
+        leaf input_interface {
+            type string;
+            description "Match on interface";
+        }
+        leaf output_interface {
+            type string;
+            description "Match on output interface";
+        }   
+		leaf protocol {
+			type enumeration {
+				enum TCP;
+				enum UDP;
+				enum ICMP;
+			}
+			description "When using icmp make sure source port/dest port isnt configured";
+		}
+        leaf mac {
+            type string {
+                pattern '[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}';
+            }
+            must "boolean(../../../../INPUT) or boolean(../../../../PREROUTING) or (../../../../FORWARD)" {
+                error-message "Direction should be Prerouting/forward/input only";
+            }
+        }
+        container tcp-flags {
+            must "../protocol ='TCP'" {
+                error-message "protocol TCP should be used";
+            }
+            leaf FIN {
+                type empty;
+            }
+            leaf SYN {
+                type empty;
+            }
+            leaf ACK {
+                type empty;
+            }
+            leaf RST {
+                type empty;
+            }
+        }
+
+        leaf icmp-type {
+            type enumeration {
+                enum echo-request;
+                enum echo-reply;
+            }
+            description "Drop specific ICMP packets. Use this along with protocol ICMP";
+            must "../protocol = 'ICMP'" {
+                error-message "Protocol ICMP should be enabled";
+            }
+        }
+ 
+	    leaf-list sourcePort {
+			type string {
+                pattern "(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})|(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3}):(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})" {
+                    error-message "Value should be of format NN or range of ports in format NN:NN";
+                }
+            }
+			description "Source Port";
+			must "../protocol = 'TCP' or ../protocol = 'UDP'" {
+				error-message "Protocol needs to be configured with either TCP or UDP";
+			}
+		}
+		
+        leaf-list  destPort {
+			type string {
+                pattern "(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})|(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3}):(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})" {
+                error-message "Value should be of format NN or range of ports in format NN:NN";
+                }
+            }
+			description "Destination Port";
+			must "../protocol = 'TCP' or ../protocol = 'UDP'" {
+				error-message "protocol needs to be configured with either TCP or UDP";
+			}
+		}
+
+        leaf packetMark {
+            type uint32;
+            description "Mark incoming/outgoing packet headers";
+        }
+ 
+        leaf set-tos {
+            description "set TOS params";
+            type uint8;
+        }
+
+        leaf set-class {
+            description "class in format MAJOR:MINOR";
+            type string {
+                pattern "(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3}):(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})" {
+                    error-message "Value should be of format NN:NN";
+                }
+            }
+            must "boolean(../../../../POSTROUTING)" {
+                error-message "direction should be POSTROUTING";
+            }
+        }
+
+        leaf fragment {
+            type empty;
+        }
+        
+        leaf ttl {
+            type uint32;
+            description "Match on TTL within the packet";
+        }
+        container DSCP {
+            description "set DSCP bits while mangling";
+            leaf set-dscp {
+                type uint32;
+                description "sets DSCP bits";
+                must "not(boolean(../set-dscp-class))" {
+                    error-message "Cannot have dscp and dscp-class used together";
+                }
+            }
+            leaf set-dscp-class {
+                type string;
+                description "set DSCP class";
+                must "not(boolean(../set-dscp))" {
+                    error-message "Cannot have dscp and dscp-class used together";
+                }
+            }
+        }
+        
+        leaf connlimit {
+            type uint32;
+            description "Restrict the number of connections a single IP can have";
+        }
+
+        container connState {
+            leaf new {
+                type empty;
+            }
+            leaf Established {
+                type empty;
+            }
+            leaf Related {
+                type empty;
+            }
+            leaf Invalid {
+                type empty;
+            }
+            leaf Untracked {
+                type empty;
+            }
+            leaf Dnat {
+                type empty;
+            }
+            leaf Snat {
+                type empty;
+            }
+        }
+
+        container rate-limit-packets {
+            leaf limit-packets {
+                type string {
+                    pattern '([0-9]{2}/hour)|([0-9]{2}/minute)|([0-9]{2}/second)|([0-9]{2}/day)' {
+                        error-message "Rate limit packets: format of NN/second | NN/minute | NN/hour | NN/day";
+                    }
+                }
+                description "Rate limit packets: format of NN/second | NN/minute | NN/hour | NN/day";
+            }
+            leaf hit-counts {
+                type uint8;
+            }
+            leaf seconds {
+                type uint32;
+                must "../hit-counts" {
+                    error-message "leaf hit-counts value missing";
+                }
+            }
+            leaf limit-burst {
+                type uint32;
+            }
+        }
+
+        leaf max-seg-size {
+            type uint32;
+            description "max segment size to set or match";
+            must "../protocol = 'TCP'" {
+                error-message "protocol TCP{6} should be configured for TCPMSS";
+            }
+        }
+        leaf length {
+            type string {
+                pattern "(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})|(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3}):(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})" {
+                    error-message "Value should be of format NN or NN:NN";
+                }
+            }
+            description "either single value or a range :example 1400:1500";
+        }
+        
+        leaf to-destination {
+            type string {
+                pattern 
+                '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])-'
+               +'(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|'
+               +'(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]):'
+               +'(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})|'
+               +'(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]):'
+               +'(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})-(6553[0-5]|655[0-2][0-9]\d|'
+               +'65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})' {
+                    error-message "value should be of format w.x.y.z-w.x.y.z or w.x.y.z:PP or w.x.y.z:pp-pp";
+                }
+            }
+            description "Destination NAT target";
+            /* to-destination can be one of the following types(pattern in order)
+                1. --to-destination 192.168.1.1-192.168.1.10
+                2. --to-destination 192.168.1.1:80
+                3. --to-destination 192.168.1.1:80-100
+                Port options are valid only for protocol TCP/UDP so that has to be set.
+           */
+        }
+        
+        leaf to-source {
+            type string {
+                pattern 
+                '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])-'
+               +'(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|'
+               +'(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]):'
+               +'(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})|'
+               +'(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]):'
+               +'(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})-(6553[0-5]|655[0-2][0-9]\d|'
+               +'65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})' {
+                    error-message "value should be of format w.x.y.z-w.x.y.z or w.x.y.z:PP or w.x.y.z:pp-pp";
+                }
+             }
+            description "Source NAT target";
+            /* to-source can be one of the following types(pattern in order)
+                1. --to-source 192.168.1.1-192.168.1.10
+                2. --to-source 192.168.1.1:80
+                3. --to-source 192.168.1.1:80-100
+                Port options are valid only for protocol TCP/UDP so that has to be set.
+           */
+        }
+        
+        leaf to-ports {
+            type string {
+                pattern "(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})|"
+                       +"(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})-"
+                       +"(6553[0-5]|655[0-2][0-9]\d|65[0-4](\d){2}|6[0-4](\d){3}|[1-5](\d){4}|[1-9](\d){0,3})" {
+                            error-message " value should be of format  NN or NN-NN";
+                        }          
+            }
+            must "(boolean(../../../../PREROUTING) or boolean(../../../../OUTPUT))"
+                 +"and (../protocol ='TCP' or ../protocol='UDP')" {
+                error-message "Direction should be Prerouting/Output chain only and protocol to be enabled if to-ports are used";
+            }
+            /* 
+            1. --to-ports 8080-8090
+            2. --to-ports 8080
+            */
+        }
+    }
+
+    grouping group-action-conditions {
+        choice action {
+	        leaf ACCEPT {
+			    description "then Accept";
+                type empty;
+			}
+			leaf REJECT {
+			    description " then Reject";
+                type empty;
+			}
+			leaf DROP {
+			    description "then drop";
+                type empty;
+			}
+            leaf MARK {
+                description "Mark the packets";
+                type empty;
+                must "boolean( ../../from/packetMark)" {
+                    error-message "Marking value not set";
+                }
+            }
+            leaf REDIRECT {
+                description "calling this then would add multiple iptable rules";
+                type empty;
+                must "boolean(../../../../../nat) and "
+                     + "(boolean(../../../../PREROUTING) or boolean(../../../../OUTPUT))" {
+                            error-message "REDIRECT target valid only in nat table and with direction PREROUTING/OUTPUT";
+                        }
+            }
+            leaf JUMP {
+                description " Jump chains";
+                type empty;
+            }
+            leaf MASQUERADE {
+                type empty;
+                must "boolean(../../../../POSTROUTING)" {
+                    error-message "Direction should be POSTROUTING";
+                }
+            }
+            leaf TOS {
+                type empty;
+                must "boolean(../../from/set-tos)" {
+                    error-message "TOS value not set";
+                }
+            }
+            container LOG {
+                leaf logLevel {
+                    type enumeration {
+                        enum debug {
+                        value 1;
+                        }
+                    }
+                }
+                leaf logPrefix {
+                    type string;
+                }
+            }
+            leaf DSCP {
+                type empty;
+                must "boolean(../../from/DSCP/set-dscp) or boolean(../../from/DSCP/set-dscp-class)" {
+                    error-message "DSCP values not set";
+                }
+            }
+            leaf TCPMSS {
+                type empty;
+                must "boolean(../../from/max-seg-size) and boolean(../../from/tcp-flags)" {
+                    error-message "MSS flag value not set";
+                }
+            }
+            leaf CLASSIFY {
+                type empty;
+                must "boolean(../../from/set-class)" {
+                    error-message "Class not set under from conditions";
+                }
+            }
+            leaf DNAT {
+                type empty;
+                must "boolean(../../from/to-destination) and "
+                     + "(boolean(../../../../OUTPUT) or boolean(../../../../PREROUTING))" {
+                    error-message "to-destination match has to be added under from stanza along with direction PREROUTING/OUTPUT";
+                }
+            }
+            leaf SNAT {
+                type empty;
+                must "boolean(../../from/to-source) and "
+                    + "(boolean(../../../../INPUT) or boolean(../../../../POSTROUTING))" {
+                    error-message "to-source match has to be added under from stanza along with direction INPUT/POSTROUTING";
+                }
+            }
+        }
+    }
+	container firewall {
+		description "Firewall filters for cRPD/Ubuntu integration";
+		list policy {
+            /* each policy would be a custom iptable chain */
+			key name;
+            leaf name {
+                description "Policy name. This will be custom chain name";
+                type string;
+            }
+            choice table {
+                case a {
+                    container raw {
+                        choice direction {
+                            case one {
+                                container PREROUTING {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }
+                            }
+                            case two {
+                                container OUTPUT {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }       
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }       
+                            }
+                        }
+                    }
+                }
+                case b {
+                    container mangle {
+                        choice direction {
+                            case one {
+                                container PREROUTING {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }
+                            }
+                            case two {
+                                container INPUT {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }
+                            }
+                            case three {
+                                container FORWARD {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }
+                            }
+                            case four {
+                                container OUTPUT {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }
+                            }
+                            case five {
+                                container POSTROUTING {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }   
+                            }
+                        }
+                    }
+                }
+                case c {   
+                    container filter {
+                        choice direction {
+                            case one {
+                                container INPUT {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }
+                            }
+                            case two {
+                                container OUTPUT {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }
+                            }
+                            case three {
+                                container FORWARD {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }   
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }   
+                            }
+                        }
+                    }
+                }
+                case d {
+                    container nat {
+                        choice direction {
+                            case one {
+                                container INPUT {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }
+                            }
+                            case two {
+                                container OUTPUT {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }
+                            }
+                            case three {
+                                container PREROUTING {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }   
+                                }
+                            }
+                            case four {
+                                container POSTROUTING {
+                                    list term {
+                                        key name;
+                                        ordered-by user;
+                                        leaf name {
+                                            type string;
+                                            description "term name";
+                                        }
+                                        container from {
+			                                description "match conditions";
+                                            uses group-match-conditions;
+                                        }
+                                        container then {
+                                            description "action";
+                                            uses group-action-conditions;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+            
+    /**************** Beginning RPC calls for operational commands  ***********/
+	rpc get-firewall {
+		description "List all IP table rules created";
+		junos:command "show firewall" {
+			junos:action-execute {
+				junos:script "firewall_action_Script.py";
+				}
+			}
+		input {
+            //chain should be valid only when table is entered 
+			leaf chain {
+                type empty;
+                description "chain view of the rule";
+                when "boolean(../table)";
+			}
+            leaf lookup-ip-rules {
+                type empty;
+                description "display ip rule table";
+            }
+            leaf table {
+                type enumeration {
+                    enum mangle {
+                     value 1;
+                    }
+                    enum nat {
+                        value 2;
+                    }
+                    enum raw {
+                        value 3;
+                    } 
+                    enum filter {
+                        value 4;
+                    }
+                }          		
+            }
+		}  
+		output {
+			leaf status {
+				type enumeration {
+					enum "Successful" {
+						value 1;
+						}
+					enum "Failed" {
+						value 2;
+						}
+					}
+				}
+            leaf "output" {
+                type string;
+            }
+            junos-odl:line {
+                junos-odl:field "output";
+            }
+	    }
+	}
+}

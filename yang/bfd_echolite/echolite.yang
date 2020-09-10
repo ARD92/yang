@@ -1,0 +1,44 @@
+module echolite {
+	namespace "http://bfdecholite";
+	prefix "echolite";
+	organization "Juniper Networks";
+	contact "Aravind Prabhakar
+        	 <mailto: aprabh@juniper.net>";
+	description "Custom YANG model to configure BFD Echolite. This is 
+                    a stopgap solution to configure echolite sessions 
+                    until natively incorported in Junos DDL";
+	revision "2020-04-29" {
+		description "Version 1.0";
+ 		}
+	container echolite { 
+		list session {
+			key name;
+			leaf name {
+				description "Name of the session";
+				type string;
+			}
+			
+        		leaf remote-address {
+        	   		type string;
+        		}	
+        		leaf local-address {
+        	    		type string;
+        		}
+        		leaf local-interface {
+        	    		type string;
+        		}
+        		leaf instance {
+        	    		type string;
+        	    		description "Not configuring this will install in default instance";
+        		}
+        		leaf session-id {
+        	    		type uint32;
+        	    		config false;
+        		}
+        		leaf timer {
+        	   		type uint32;
+        	    		description "Value in milliseconds";
+        		}
+		}
+    	}
+} 

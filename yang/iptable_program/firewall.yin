@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module name="firewall"
+        xmlns="urn:ietf:params:xml:ns:yang:yin:1"
+        xmlns:firewall="http://firewall"
+        xmlns:ietf-inet-types="urn:ietf:params:xml:ns:yang:ietf-inet-types"
+        xmlns:junos="http://yang.juniper.net/yang/1.1/je">
+  <namespace uri="http://firewall"/>
+  <prefix value="firewall"/>
+  <import module="ietf-inet-types">
+    <prefix value="ietf-inet-types"/>
+  </import>
+  <import module="junos-extension">
+    <prefix value="junos"/>
+  </import>
+  <organization>
+    <text>Juniper Networks</text>
+  </organization>
+  <contact>
+    <text>aprabh@juniper.net</text>
+  </contact>
+  <container name="firewall">
+    <description>
+      <text>5 tuple matching Firewall filters for cRPD/Ubuntu integration</text>
+    </description>
+    <leaf name="default_rule">
+      <description>
+        <text>default action for input, output and forward chain</text>
+      </description>
+      <type name="enumeration">
+        <enum name="ACCEPT">
+          <description>
+            <text>deafult action accept</text>
+          </description>
+        </enum>
+      </type>
+    </leaf>
+    <list name="policy">
+      <key value="name"/>
+      <description>
+        <text>match conditions</text>
+      </description>
+      <leaf name="name">
+        <type name="string"/>
+        <description>
+          <text>Policy Name</text>
+        </description>
+      </leaf>
+      <leaf name="sourceIp">
+        <type name="ietf-inet-types:ip-address"/>
+        <description>
+          <text>Source IP Address</text>
+        </description>
+      </leaf>
+      <leaf name="destIp">
+        <type name="ietf-inet-types:ip-address"/>
+        <description>
+          <text>Destination IP Address</text>
+        </description>
+      </leaf>
+      <leaf name="protocol">
+        <type name="enumeration">
+          <enum name="TCP"/>
+          <enum name="UDP"/>
+          <enum name="ICMP"/>
+        </type>
+        <description>
+          <text>When using icmp make sure source port/dest port isnt configured</text>
+        </description>
+      </leaf>
+      <leaf name="sourcePort">
+        <type name="uint32"/>
+        <description>
+          <text>Source Port</text>
+        </description>
+        <must condition="../protocol = 'TCP' or ../protocol = 'UDP'">
+          <error-message>
+            <value>Protocol needs to be configured with either TCP or UDP</value>
+          </error-message>
+        </must>
+      </leaf>
+      <leaf name="destPort">
+        <type name="uint32"/>
+        <description>
+          <text>Destination Port</text>
+        </description>
+        <must condition="../protocol = 'TCP' or ../protocol = 'UDP'">
+          <error-message>
+            <value>protocol needs to be configured with either TCP or UDP</value>
+          </error-message>
+        </must>
+      </leaf>
+      <leaf name="direction">
+        <description>
+          <text>Direction of connections</text>
+        </description>
+        <mandatory value="true"/>
+        <type name="enumeration">
+          <enum name="INPUT">
+            <description>
+              <text>Incoming connections</text>
+            </description>
+          </enum>
+          <enum name="OUTPUT">
+            <description>
+              <text>Outgoing connections</text>
+            </description>
+          </enum>
+          <enum name="FORWARD">
+            <description>
+              <text>Forward chain rule</text>
+            </description>
+          </enum>
+        </type>
+      </leaf>
+      <leaf name="action">
+        <mandatory value="true"/>
+        <type name="enumeration">
+          <enum name="ACCEPT">
+            <description>
+              <text>action Accept</text>
+            </description>
+          </enum>
+          <enum name="REJECT">
+            <description>
+              <text> action Reject</text>
+            </description>
+          </enum>
+          <enum name="DROP">
+            <description>
+              <text>accept/reject/drop</text>
+            </description>
+          </enum>
+        </type>
+      </leaf>
+    </list>
+  </container>
+  <rpc name="get-firewall">
+    <description>
+      <text>List all IP table rules created</text>
+    </description>
+    <junos:command command="show firewall">
+      <junos:action-execute>
+        <junos:script script="firewall_action_script.py"/>
+      </junos:action-execute>
+    </junos:command>
+    <input>
+      <leaf name="list">
+        <type name="enumeration">
+          <enum name="chain">
+            <description>
+              <text>List Ip chain rules</text>
+            </description>
+          </enum>
+          <enum name="all">
+            <description>
+              <text>list rules</text>
+            </description>
+          </enum>
+        </type>
+      </leaf>
+    </input>
+    <output>
+      <leaf name="status">
+        <type name="enumeration">
+          <enum name="Successful">
+            <value value="1"/>
+          </enum>
+          <enum name="Failed">
+            <value value="2"/>
+          </enum>
+        </type>
+      </leaf>
+    </output>
+  </rpc>
+</module>

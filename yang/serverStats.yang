@@ -1,0 +1,59 @@
+/*
+Revision: 2019-10-7
+
+Yang model with RPC's to advertise VM resources 
+over NETCONF. This model will be loaded in cMGD
+and has to be run in host mode. 
+
+*/
+
+module server {
+    namespace "http://server";
+  
+    /**************** Beginning RPC calls ***********/
+	rpc get-server {
+		description "List all Server stats";
+		junos:command "show server" {
+			junos:action-execute {
+				junos:script "server_action_script.py";
+				}
+			}
+		input {
+			leaf list {
+				type enumeration {
+					enum ram {
+						description "List Ram usuage on the VM/server";
+					}
+					enum hdd {
+						description "List HDD usage";
+					}
+                   enum vmstat {
+                        description "List vmstats";
+                   }
+                  enum cpu {
+                        description "avg-cpu using iostat";
+                  }
+                  enum meminfo {
+                        description "/proc/meminfo details";
+                  }
+                   
+                  enum softirq {
+                        description "/proc/softirq details";
+                  }
+				}
+			}
+		}
+		output {
+			leaf status {
+				type enumeration {
+					enum "Successful" {
+						value 1;
+						}
+					enum "Failed" {
+						value 2;
+						}
+					}
+				}
+			}
+		}
+	}
