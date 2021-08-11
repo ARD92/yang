@@ -1,0 +1,76 @@
+/*
+Custom Yang model to load Unicast VXLAN config
+for ATT DNI service. Configuring static vxlan
+tunnels while existing in vMX and MX, it does 
+not exist today in cRPD. This Yang model will 
+allow one to configure the same as a stop gap
+solution until engineering natively adds DDL
+support.
+
+Version: 1.0 
+Date: 08-03-2021  
+
+Example 
+set vxlan interface vxlan100 interface ens3 ip-prefix 1.1.1.1/30 remote-ip 1.1.1.2 vni 100 destination-port 4789
+
+*/
+
+module unicast-vxlan {
+    namespace "http://unicast-vxlan";
+    prefix "unicast-vxlan";
+    organization "Juniper Networks";
+    contact "Aravind Prabhakar
+            <mailto: aprabh@juniper.net>";
+    description "Custom yang model to configure unicast 
+                 vxlan in cRPD";
+    revision "2021-08-03" {
+        description "Version 1.0";
+    }
+    container vxlan {
+        list interface {
+            key name;
+            leaf name {
+                description "vxlan interface name";
+                type string;
+            }
+            leaf interface {
+                description "Name of the underlay interface used to initiate the vxlan tunnel";
+                type string;
+            }
+            leaf ip-prefix {
+                description "VTEP IP address of the vxlan interface";
+                type string {
+                    pattern
+                    '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
+                    + '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])/([0-9]{2})|'
+                    + '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])' {
+                        error-message "value should be of format w.x.y.z or w.x.y.z/subnet";
+                    }
+                }
+                must "boolean(../interface)" {
+                    error-message "Interface configuration missing";
+                }
+            }
+            leaf remote-ip {
+                description "Remote VTEP end point IP";
+                type string {
+                    pattern
+                    '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}'
+                    + '([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])/([0-9]{2})|'
+                    + '(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])' {
+                        error-message "value should be of format w.x.y.z";
+                    }
+                }
+            }
+            leaf destination-port {
+                description "Destination UDP port number";
+                type uint32;
+                default 4789;
+            }
+            leaf vni {
+                description "vni id";
+                type string;
+            }
+        }
+    }
+} 
