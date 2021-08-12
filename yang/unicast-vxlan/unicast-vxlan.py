@@ -39,6 +39,7 @@ import json
 import logging
 import jxmlease
 import paho.mqtt.client as mqtt
+from logging import handlers
 
 # MQTT related params
 MQTT_PORT = 1883
@@ -47,46 +48,58 @@ MQTT_HOST = ""
 MQTT_TIMEOUT = 10
 INTF = {}
 
-logging.basicConfig(filename='/var/log/unicast-vxlan.log', filemode='w', format='%s(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+Logrotate = logging.handlers.RotatingFileHandler(
+    filename='/var/log/unicast-vxlan.log',
+    mode='a',
+    maxBytes=10240,
+    backupCount=10,
+    encoding=None,
+    delay=0
+)
 
+logging.basicConfig(format='%s(name)s - %(levelname)s - %(message)s', level=logging.DEBUG, handlers=[Logrotate])
 
 def find(xml):
     mapp = {}
     logging.debug(xml)
     logging.debug(50*"-")
     root = jxmlease.parse(xml)
-    logging.debug(root.prettyprint())
+    logging.debug(root)
 
     # deleting from top level hierarchy
-    if root["vxlan"] == "":
-        delVxlan("all")
+    try:
+        if root["vxlan"] == "":
+            delVxlan("all")
 
-    # single element handling
-    elif isinstance(root['vxlan']['interface'],dict):
-        if len(root['vxlan']['interface']) > 1:
-            vxlanname = root['vxlan']['interface']['name']
-            vni = root['vxlan']['interface']['vni']
-            remoteip = root['vxlan']['interface']['remote-ip']
-            ipprefix = root['vxlan']['interface']['ip-prefix']
-            underlayintf = root['vxlan']['interface']['interface']
-            dstport = root['vxlan']['interface']['destination-port']
-            addVxlan(vxlanname, vni, ipprefix, remoteip, underlayintf, dstport)
-        else:
-            delVxlan(root['vxlan']['interface']['name'])
-
-    # multiple element handling
-    elif isinstance(root['vxlan']['interface'],list):
-        for i in root['vxlan']['interface']:
-            if len(i) > 1:
-                vxlanname = i['name']
-                vni = i['vni']
-                remoteip = i['remote-ip']
-                ipprefix = i['ip-prefix']
-                underlayintf = i['interface']
-                dstport = i['destination-port']
+        # single element handling
+        elif isinstance(root['vxlan']['interface'],dict) and root['vxlan'] != "":
+            if len(root['vxlan']['interface']) > 1:
+                vxlanname = root['vxlan']['interface']['name']
+                vni = root['vxlan']['interface']['vni']
+                remoteip = root['vxlan']['interface']['remote-ip']
+                ipprefix = root['vxlan']['interface']['ip-prefix']
+                underlayintf = root['vxlan']['interface']['interface']
+                dstport = root['vxlan']['interface']['destination-port']
                 addVxlan(vxlanname, vni, ipprefix, remoteip, underlayintf, dstport)
             else:
-                delVxlan(i['name'])
+                delVxlan(root['vxlan']['interface']['name'])
+
+        # multiple element handling
+        elif isinstance(root['vxlan']['interface'],list):
+            for i in root['vxlan']['interface']:
+                if len(i) > 1:
+                    vxlanname = i['name']
+                    vni = i['vni']
+                    remoteip = i['remote-ip']
+                    ipprefix = i['ip-prefix']
+                    underlayintf = i['interface']
+                    dstport = i['destination-port']
+                    addVxlan(vxlanname, vni, ipprefix, remoteip, underlayintf, dstport)
+                else:
+                    delVxlan(i['name'])
+
+    except KeyError:
+        logging.info("blank commit occured, passing")
 """
 Handling vxlan interface addition
 """
@@ -117,24 +130,27 @@ def addVxlan(ifname, vni, prefix, remoteip, underlayintf, dstport):
 Handling Vxlan interface deletion
 """
 def delVxlan(ifname):
-    if ifname == "all":
-        logging.info("deleting all vxlan interfaces")
-        if len(INTF) == 0:
-            logging.info("no entries to delete. In case stale devices are present, try deleting manually")
+    try:
+        if ifname == "all":
+            logging.info("deleting all vxlan interfaces")
+            if len(INTF) != 0:
+                for k,v in list(INTF.items()):
+                    logging.info("Deleting vxlan interface {}".format(k))
+                    os.popen('ip link set down {}'.format(k))
+                    os.popen('ip link del {}'.format(k))
+                    INTF.pop(k)
         else:
-            for k,v in list(INTF.items()):
-                logging.info("Deleting vxlan interface {}".format(k))
-                os.popen('ip link set down {}'.format(k))
-                os.popen('ip link del {}'.format(k))
-                INTF.pop(k)
-    else:
-        logging.info("Deleting vxlan interface {}".format(ifname))
-        os.popen('ip link set down {}'.format(ifname))
-        os.popen('ip link del {}'.format(ifname))
-        INTF.pop(ifname)
+            logging.info("Deleting vxlan interface {}".format(ifname))
+            os.popen('ip link set down {}'.format(ifname))
+            os.popen('ip link del {}'.format(ifname))
+            INTF.pop(ifname)
 
-    with open('/var/db/INTF-STORE.json','w') as f4:
-        f4.write(json.dumps(INTF, indent=4))
+        with open('/var/db/INTF-STORE.json','w') as f4:
+            f4.write(json.dumps(INTF, indent=4))
+
+    except Error as e:
+        logging.info(e)
+
 
 
 def on_connect(client, userdata, flags, rc):
