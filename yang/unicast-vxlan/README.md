@@ -2,8 +2,19 @@
 
 To install the package, copy the files into cRPD
 
+
+## Start cRPD 
+Note: *Currently the hostname and container name should be the same, else MQTT may not start*
 ```
-docker cp unicast-vxlan <crpd container>:/home
+docker volume create crpd01-vardb
+docker volume create crpd01-config
+docker volume create crpd01-varlog
+docker run -itd --privileged --name crpd01 -h crpd01 -v crpd01-config:/config -v crpd01-vardb:/var/db -v crpd01-varlog:/var/log crpd:latest  
+```
+
+## Copy package into cRPD 
+```
+docker cp unicast-vxlan crpd01:/home
 ```
 you can also mount the volume into /var/db directory to ensure all the files are intact. 
 
