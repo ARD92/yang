@@ -81,6 +81,11 @@ vxlan108         Up    ISO   enabled
     - commit
     - config rest of the protocols using vxlan intf
     - commit 
+- currently you cannot modify an existing tunnel. you will have to delete the tunnel and re-create it. i.e. Replace pattern statements are not handled.
+    - delete the tunnel interface
+    - commit
+    - create the new tunnel interface
+    in case you miss the commit in the second step, it is similar to replace pattern where mgd handles it as a replace operation and that is not handled, hence the     commit in step 2 is important.
 
 ## WIP 
 - Need to use native netlink APIs to create interfaces
