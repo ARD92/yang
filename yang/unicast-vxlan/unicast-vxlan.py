@@ -65,6 +65,7 @@ def find(xml):
     logging.debug(50*"-")
     root = jxmlease.parse(xml)
     logging.debug(root)
+    #print(root)
 
     # no standard junos config is passed in commit and only vxlan hierarchy is passed during commit
     if "vxlan" in root.keys():
@@ -74,6 +75,7 @@ def find(xml):
                 if INTF:
                     delVxlan("all")
                 else:
+                    #print("all interfaces are already deleted")
                     logging.info("all interfaces are already deleted")
             # single element handling
             elif isinstance(root['vxlan']['interface'],dict):
@@ -179,6 +181,9 @@ def delVxlan(ifname):
                     os.popen('ip link set down {}'.format(k))
                     os.popen('ip link del {}'.format(k))
                     INTF.pop(k)
+            else:
+                #print("all interfaces are already deleted\n")
+                logging.info("all interfaces are already deleted\n")
         else:
             logging.info("Deleting vxlan interface {}".format(ifname))
             os.popen('ip link set down {}'.format(ifname))
@@ -189,9 +194,8 @@ def delVxlan(ifname):
             f4.write(json.dumps(INTF, indent=4))
 
     except Error as e:
+        #print(e)
         logging.info(e)
-
-
 
 def on_connect(client, userdata, flags, rc):
     print("connected with result code ", rc)

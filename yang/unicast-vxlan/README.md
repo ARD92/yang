@@ -20,7 +20,8 @@ you can also mount the volume into /var/db directory to ensure all the files are
 
 ## configure cRPD
 
-The below configuration needs to be configured first 
+The below configuration needs to be configured first. This step can be skipped as it is included in the next step. 
+For the below to commit, root authentication password has to be present. By default "Juniper123" has been configured during the installation of the package. 
 
 ```
 set system commit xpath
