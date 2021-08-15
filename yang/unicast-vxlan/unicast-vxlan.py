@@ -66,40 +66,80 @@ def find(xml):
     root = jxmlease.parse(xml)
     logging.debug(root)
 
-    # deleting from top level hierarchy
-    try:
-        if root["vxlan"] == "":
-            delVxlan("all")
-
-        # single element handling
-        elif isinstance(root['vxlan']['interface'],dict) and root['vxlan'] != "":
-            if len(root['vxlan']['interface']) > 1:
-                vxlanname = root['vxlan']['interface']['name']
-                vni = root['vxlan']['interface']['vni']
-                remoteip = root['vxlan']['interface']['remote-ip']
-                ipprefix = root['vxlan']['interface']['ip-prefix']
-                underlayintf = root['vxlan']['interface']['interface']
-                dstport = root['vxlan']['interface']['destination-port']
-                addVxlan(vxlanname, vni, ipprefix, remoteip, underlayintf, dstport)
-            else:
-                delVxlan(root['vxlan']['interface']['name'])
-
-        # multiple element handling
-        elif isinstance(root['vxlan']['interface'],list):
-            for i in root['vxlan']['interface']:
-                if len(i) > 1:
-                    vxlanname = i['name']
-                    vni = i['vni']
-                    remoteip = i['remote-ip']
-                    ipprefix = i['ip-prefix']
-                    underlayintf = i['interface']
-                    dstport = i['destination-port']
+    # no standard junos config is passed in commit and only vxlan hierarchy is passed during commit
+    if "vxlan" in root.keys():
+        try:
+            # deleting from top level hierarchy
+            if root["vxlan"] == "" :
+                if INTF:
+                    delVxlan("all")
+                else:
+                    logging.info("all interfaces are already deleted")
+            # single element handling
+            elif isinstance(root['vxlan']['interface'],dict):
+                if len(root['vxlan']['interface']) > 1:
+                    vxlanname = root['vxlan']['interface']['name']
+                    vni = root['vxlan']['interface']['vni']
+                    remoteip = root['vxlan']['interface']['remote-ip']
+                    ipprefix = root['vxlan']['interface']['ip-prefix']
+                    underlayintf = root['vxlan']['interface']['interface']
+                    dstport = root['vxlan']['interface']['destination-port']
                     addVxlan(vxlanname, vni, ipprefix, remoteip, underlayintf, dstport)
                 else:
-                    delVxlan(i['name'])
+                    delVxlan(root['vxlan']['interface']['name'])
 
-    except KeyError:
-        logging.info("blank commit occured, passing")
+            # multiple element handling
+            elif isinstance(root['vxlan']['interface'],list):
+                for i in root['vxlan']['interface']:
+                    if len(i) > 1:
+                        vxlanname = i['name']
+                        vni = i['vni']
+                        remoteip = i['remote-ip']
+                        ipprefix = i['ip-prefix']
+                        underlayintf = i['interface']
+                        dstport = i['destination-port']
+                        addVxlan(vxlanname, vni, ipprefix, remoteip, underlayintf, dstport)
+                    else:
+                        delVxlan(i['name'])
+            else:
+                logging.debug("no vxlan hierarchy present")
+        except KeyError:
+            logging.info("blank commit occured, passing")
+
+    # standard Junos config is passed along with vxlan hierarchy as well. Parse only vxlan hierarchy 
+    elif 'configuration' in root.keys():
+        try:
+            if root["configuration"]["vxlan"] == "" and INTF:
+                delVxlan("all")
+
+            # single element handling
+            elif isinstance(root['configuration']['vxlan']['interface'],dict):
+                if len(root['configuration']['vxlan']['interface']) > 1:
+                    vxlanname = root['configuration']['vxlan']['interface']['name']
+                    vni = root['configuration']['vxlan']['interface']['vni']
+                    remoteip = root['configuration']['vxlan']['interface']['remote-ip']
+                    ipprefix = root['configuration']['vxlan']['interface']['ip-prefix']
+                    underlayintf = root['configuration']['vxlan']['interface']['interface']
+                    dstport = root['configuration']['vxlan']['interface']['destination-port']
+                    addVxlan(vxlanname, vni, ipprefix, remoteip, underlayintf, dstport)
+                else:
+                    delVxlan(root['configuration']['vxlan']['interface']['name'])
+
+            # multiple element handling
+            elif isinstance(root['configuration']['vxlan']['interface'],list):
+                for i in root['configuration']['vxlan']['interface']:
+                    if len(i) > 1:
+                        vxlanname = i['name']
+                        vni = i['vni']
+                        remoteip = i['remote-ip']
+                        ipprefix = i['ip-prefix']
+                        underlayintf = i['interface']
+                        dstport = i['destination-port']
+                        addVxlan(vxlanname, vni, ipprefix, remoteip, underlayintf, dstport)
+                    else:
+                        delVxlan(i['name'])
+        except KeyError:
+            logging.info("blank commit occured, passing")
 """
 Handling vxlan interface addition
 """
