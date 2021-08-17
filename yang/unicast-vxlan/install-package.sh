@@ -3,10 +3,7 @@
 #----------------------#
 
 # Load base mgd configs
-cli -c 'configure;set system root-authentication encrypted-password "$6$asEwH$A3JDiygMWPzpG7KS0o7MAQgmIg/JEvDE
-D0.tI4fPENi./dOUeMpwrDwTpnlpsfl0ozfAFkE1jOK/7J2eWWlbp.";set system commit xpath;set system commit constraints
-direct-access;set system commit notification configuration-diff-format xml;set system scripts language python3
-;commit'
+cli -c 'configure;set system root-authentication encrypted-password "$6$asEwH$A3JDiygMWPzpG7KS0o7MAQgmIg/JEvDED0.tI4fPENi./dOUeMpwrDwTpnlpsfl0ozfAFkE1jOK/7J2eWWlbp.";set system commit xpath;set system commit constraints direct-access;set system commit notification configuration-diff-format xml;set system scripts language python3;commit'
 
 # Install required packages 
 apt-get update
